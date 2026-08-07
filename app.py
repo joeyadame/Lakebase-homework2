@@ -1,7 +1,7 @@
 """
 Weather Intelligence Databricks App.
 
-This app follows the Day 1/Day 2 Lakebase reference pattern:
+This app follows the Weather Intelligence project pattern:
 - Flask serves a small UI and REST API.
 - lakebase.py owns the psycopg2 connection to Lakebase.
 - weather_client.py harvests public NWS weather text.

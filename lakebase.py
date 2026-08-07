@@ -103,8 +103,8 @@ def ensure_weather_schema(
 ) -> None:
     """Create the Weather Intelligence Lakebase tables and pgvector index.
 
-    Mirrors the Day 2 ticker-news split: raw documents live in one table,
-    while chunk-level vectors live in a separate pgvector table.
+    Raw weather documents live in one table, while chunk-level vectors live in
+    a separate pgvector table.
     """
     documents_table = _safe_identifier(
         documents_table or os.environ.get("WEATHER_DOCUMENTS_TABLE", "weather_documents")
