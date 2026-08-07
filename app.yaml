@@ -1,0 +1,19 @@
+command:
+  - "python"
+  - "app.py"
+
+env:
+  - name: LAKEBASE_SECRET_SCOPE
+    value: "database"
+  - name: LAKEBASE_SECRET_KEY
+    value: "lakebase-url"
+  - name: WEATHER_DOCUMENTS_TABLE
+    value: "weather_documents"
+  - name: WEATHER_EMBEDDINGS_TABLE
+    value: "weather_embeddings"
+  - name: WEATHER_EMBEDDING_MODEL
+    value: "sentence-transformers/all-MiniLM-L6-v2"
+  - name: WEATHER_DEFAULT_LOCATIONS
+    value: "Chicago, IL;Austin, TX"
+  - name: NWS_USER_AGENT
+    value: "weather-intelligence-lakebase-app/1.0 (replace-with-your-email@example.com)"

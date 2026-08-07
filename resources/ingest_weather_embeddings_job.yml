@@ -1,0 +1,40 @@
+# Databricks Workflow that embeds weather_documents into weather_embeddings.
+# The schedule is paused by default; run once manually before unpausing.
+
+resources:
+  jobs:
+    ingest_weather_embeddings_job:
+      name: "[${bundle.target}] Ingest Weather Embeddings"
+
+      schedule:
+        quartz_cron_expression: "0 */30 * * * ?"
+        timezone_id: "UTC"
+        pause_status: PAUSED
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+      max_concurrent_runs: 1
+
+      job_clusters:
+        - job_cluster_key: default_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+            data_security_mode: SINGLE_USER
+
+      tasks:
+        - task_key: ingest_weather_embeddings
+          job_cluster_key: default_cluster
+          notebook_task:
+            notebook_path: ../notebooks/ingest_weather_embeddings.py
+            base_parameters:
+              documents_table_name: "weather_documents"
+              embeddings_table_name: "weather_embeddings"
+              embedding_model: "sentence-transformers/all-MiniLM-L6-v2"
+              chunk_size: "800"
+              chunk_overlap: "100"
+              batch_limit: "500"
+              embed_batch_size: "32"

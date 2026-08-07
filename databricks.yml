@@ -1,0 +1,25 @@
+# Databricks Asset Bundle config for the Weather Intelligence embedding job.
+#
+# Deploy with:
+#   databricks bundle deploy -t dev
+# Run once manually with:
+#   databricks bundle run ingest_weather_embeddings_job -t dev
+
+bundle:
+  name: weather-intelligence-lakebase
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://<your-workspace-instance>.cloud.databricks.com
+
+  prod:
+    mode: production
+    workspace:
+      host: https://<your-workspace-instance>.cloud.databricks.com
+      root_path: /Shared/.bundle/${bundle.name}/${bundle.target}

@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Weather Intelligence</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0d0f0f;
+      --panel: #151817;
+      --panel-soft: #1b201e;
+      --ink: #f3f5f2;
+      --muted: #9ba7a0;
+      --line: #2d3632;
+      --line-strong: #405149;
+      --teal: #4fd1b0;
+      --teal-strong: #27b291;
+      --lime: #b6e36d;
+      --amber: #f2c36b;
+      --red: #ff7a7a;
+      --shadow: 0 18px 44px rgba(0, 0, 0, 0.28);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        linear-gradient(rgba(79, 209, 176, 0.06) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(182, 227, 109, 0.04) 1px, transparent 1px),
+        var(--bg);
+      background-size: 48px 48px, 48px 48px, auto;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+      letter-spacing: 0;
+    }
+
+    button {
+      border: 1px solid transparent;
+      border-radius: 7px;
+      min-height: 38px;
+      padding: 0 14px;
+      cursor: pointer;
+      font-weight: 750;
+      transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
+    }
+
+    button:hover:not(:disabled) {
+      transform: translateY(-1px);
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.56;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-width: 0;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      background: #0f1211;
+      color: var(--ink);
+      outline: none;
+    }
+
+    input,
+    select {
+      min-height: 38px;
+      padding: 0 10px;
+    }
+
+    textarea {
+      min-height: 118px;
+      resize: vertical;
+      padding: 10px;
+      line-height: 1.45;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: var(--teal);
+      box-shadow: 0 0 0 3px rgba(79, 209, 176, 0.14);
+    }
+
+    label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .app-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-rows: auto 1fr;
+    }
+
+    header {
+      border-bottom: 1px solid var(--line);
+      background: rgba(13, 15, 15, 0.92);
+      backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 3;
+    }
+
+    .header-inner {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 0;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      color: #06110e;
+      background: var(--teal);
+      font-weight: 900;
+      flex: 0 0 auto;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 20px;
+      line-height: 1.2;
+      letter-spacing: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .model-pill {
+      border: 1px solid var(--line);
+      color: var(--muted);
+      min-height: 32px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      max-width: 100%;
+      overflow-wrap: anywhere;
+    }
+
+    main {
+      width: 100%;
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 22px 24px 32px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .status-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .metric {
+      min-height: 82px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(21, 24, 23, 0.92);
+      box-shadow: var(--shadow);
+      padding: 13px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      display: block;
+    }
+
+    .metric strong {
+      display: block;
+      margin-top: 9px;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(21, 24, 23, 0.94);
+      box-shadow: var(--shadow);
+      min-width: 0;
+    }
+
+    .panel-header {
+      min-height: 58px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 15px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+
+    .panel-body {
+      padding: 16px;
+      display: grid;
+      gap: 14px;
+    }
+
+    form {
+      display: grid;
+      gap: 12px;
+    }
+
+    .field {
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 10px;
+    }
+
+    .inline {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: 38px;
+    }
+
+    .inline input {
+      width: 18px;
+      height: 18px;
+      min-height: 18px;
+      accent-color: var(--teal);
+    }
+
+    .actions {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .primary {
+      background: var(--teal);
+      color: #06110e;
+    }
+
+    .primary:hover:not(:disabled) {
+      background: #74e6ca;
+    }
+
+    .secondary {
+      background: #111514;
+      color: var(--ink);
+      border-color: var(--line-strong);
+    }
+
+    .secondary:hover:not(:disabled) {
+      background: #1f2824;
+    }
+
+    .notice {
+      display: none;
+      min-height: 40px;
+      padding: 10px 12px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #101312;
+      overflow-wrap: anywhere;
+      line-height: 1.45;
+    }
+
+    .notice.show {
+      display: block;
+    }
+
+    .notice.success {
+      border-color: rgba(79, 209, 176, 0.42);
+      color: #bbf7e5;
+    }
+
+    .notice.error {
+      border-color: rgba(255, 122, 122, 0.44);
+      color: #ffd2d2;
+    }
+
+    .search-shell {
+      display: grid;
+      grid-template-rows: auto minmax(420px, 1fr);
+      min-height: 650px;
+    }
+
+    .search-bar {
+      padding: 16px;
+      border-bottom: 1px solid var(--line);
+      display: grid;
+      gap: 12px;
+    }
+
+    .query-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 110px 132px auto;
+      gap: 10px;
+      align-items: end;
+    }
+
+    .results {
+      display: grid;
+      align-content: start;
+      gap: 10px;
+      padding: 16px;
+      max-height: calc(100vh - 316px);
+      min-height: 420px;
+      overflow: auto;
+    }
+
+    .result-card,
+    .document-row {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-soft);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .result-top,
+    .doc-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .result-title,
+    .doc-title {
+      font-weight: 800;
+      line-height: 1.28;
+      overflow-wrap: anywhere;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      overflow-wrap: anywhere;
+    }
+
+    .chunk,
+    .narrative {
+      white-space: pre-wrap;
+      color: #dce5df;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 8px;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 750;
+      white-space: nowrap;
+    }
+
+    .badge.alert {
+      color: #ffdada;
+      border-color: rgba(255, 122, 122, 0.36);
+    }
+
+    .badge.forecast {
+      color: #e9fac2;
+      border-color: rgba(182, 227, 109, 0.36);
+    }
+
+    .score {
+      color: #06110e;
+      background: var(--lime);
+      border: 0;
+    }
+
+    .documents {
+      display: grid;
+      gap: 10px;
+      max-height: 430px;
+      overflow: auto;
+    }
+
+    .empty {
+      min-height: 260px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      text-align: center;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .hidden {
+      display: none;
+    }
+
+    @media (max-width: 1020px) {
+      main {
+        padding: 16px;
+      }
+
+      .workspace,
+      .status-grid,
+      .query-row {
+        grid-template-columns: 1fr;
+      }
+
+      .search-shell,
+      .results {
+        min-height: 0;
+      }
+
+      .results {
+        max-height: none;
+      }
+
+      .header-inner {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+    }
+
+    @media (max-width: 620px) {
+      .grid-2 {
+        grid-template-columns: 1fr;
+      }
+
+      .result-top,
+      .doc-top {
+        display: grid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <header>
+      <div class="header-inner">
+        <div class="brand">
+          <div class="mark">W</div>
+          <h1>Weather Intelligence</h1>
+        </div>
+        <div class="model-pill">{{ embedding_model }} · {{ chunk_size }}/{{ chunk_overlap }}</div>
+      </div>
+    </header>
+
+    <main>
+      <section class="status-grid" aria-label="Pipeline status">
+        <div class="metric"><span>Documents</span><strong id="metric-documents">0</strong></div>
+        <div class="metric"><span>Vectors</span><strong id="metric-vectors">0</strong></div>
+        <div class="metric"><span>Alerts</span><strong id="metric-alerts">0</strong></div>
+        <div class="metric"><span>Forecasts</span><strong id="metric-forecasts">0</strong></div>
+      </section>
+
+      <section class="workspace">
+        <aside class="panel">
+          <div class="panel-header">
+            <h2>Sync</h2>
+            <button class="secondary" id="refresh-button" type="button">Refresh</button>
+          </div>
+          <div class="panel-body">
+            <form id="sync-form">
+              <div class="field">
+                <label for="locations-input">Locations</label>
+                <textarea id="locations-input" name="locations" required>{{ default_locations }}</textarea>
+              </div>
+              <div class="grid-2">
+                <div class="field">
+                  <label for="sync-limit">Limit</label>
+                  <input id="sync-limit" name="limit" type="number" min="1" max="200" value="50">
+                </div>
+                <label class="inline" for="include-hourly">
+                  <input id="include-hourly" name="include_hourly" type="checkbox">
+                  Hourly
+                </label>
+              </div>
+              <div class="actions">
+                <button class="primary" type="submit">Sync Weather</button>
+                <button class="secondary" id="schema-button" type="button">Init Schema</button>
+              </div>
+            </form>
+            <div class="notice" id="sync-notice"></div>
+          </div>
+
+          <div class="panel-header">
+            <h2>Recent Documents</h2>
+            <select id="document-source-filter" aria-label="Document source">
+              <option value="all">All</option>
+              <option value="alert">Alerts</option>
+              <option value="forecast">Forecasts</option>
+            </select>
+          </div>
+          <div class="panel-body">
+            <div class="documents" id="documents-list"></div>
+          </div>
+        </aside>
+
+        <section class="panel search-shell">
+          <div class="search-bar">
+            <h2>Semantic Search</h2>
+            <form id="search-form">
+              <div class="query-row">
+                <div class="field">
+                  <label for="query-input">Query</label>
+                  <input id="query-input" name="query" type="search" value="flash flood risk this weekend" required>
+                </div>
+                <div class="field">
+                  <label for="top-k-input">Top K</label>
+                  <input id="top-k-input" name="top_k" type="number" min="1" max="20" value="{{ default_top_k }}">
+                </div>
+                <div class="field">
+                  <label for="source-filter">Source</label>
+                  <select id="source-filter" name="source_type">
+                    <option value="all">All</option>
+                    <option value="alert">Alerts</option>
+                    <option value="forecast">Forecasts</option>
+                  </select>
+                </div>
+                <button class="primary" type="submit">Search</button>
+              </div>
+            </form>
+          </div>
+          <div class="results" id="results">
+            <div class="empty">No search results yet.</div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const syncForm = document.getElementById("sync-form");
+    const searchForm = document.getElementById("search-form");
+    const syncNotice = document.getElementById("sync-notice");
+    const results = document.getElementById("results");
+    const documentsList = document.getElementById("documents-list");
+    const documentSourceFilter = document.getElementById("document-source-filter");
+    const refreshButton = document.getElementById("refresh-button");
+    const schemaButton = document.getElementById("schema-button");
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+    }
+
+    function formatDate(value) {
+      if (!value) return "-";
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return value;
+      return date.toLocaleString();
+    }
+
+    function setNotice(element, text, kind = "success") {
+      element.className = `notice show ${kind}`;
+      element.textContent = text;
+    }
+
+    function clearNotice(element) {
+      element.className = "notice";
+      element.textContent = "";
+    }
+
+    function sourceBadge(sourceType) {
+      const clean = sourceType || "forecast";
+      const label = clean === "alert" ? "Alert" : "Forecast";
+      return `<span class="badge ${clean}">${label}</span>`;
+    }
+
+    async function api(path, options = {}) {
+      const resp = await fetch(path, options);
+      const data = await resp.json();
+      if (!resp.ok && resp.status !== 207) {
+        throw new Error(data.error || resp.statusText);
+      }
+      return data;
+    }
+
+    async function loadStatus() {
+      try {
+        const data = await api("/weather/status");
+        const status = data.status || {};
+        const bySource = status.by_source || {};
+        document.getElementById("metric-documents").textContent = status.documents ?? 0;
+        document.getElementById("metric-vectors").textContent = status.embeddings ?? 0;
+        document.getElementById("metric-alerts").textContent = bySource.alert ?? 0;
+        document.getElementById("metric-forecasts").textContent = bySource.forecast ?? 0;
+      } catch (err) {
+        setNotice(syncNotice, err.message, "error");
+      }
+    }
+
+    async function loadDocuments() {
+      const sourceType = documentSourceFilter.value;
+      const params = new URLSearchParams({ limit: "20", source_type: sourceType });
+      try {
+        const data = await api(`/weather/documents?${params.toString()}`);
+        renderDocuments(data.documents || []);
+      } catch (err) {
+        documentsList.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      }
+    }
+
+    function renderDocuments(documents) {
+      if (!documents.length) {
+        documentsList.innerHTML = `<div class="empty">No documents synced.</div>`;
+        return;
+      }
+      documentsList.innerHTML = documents.map((doc) => `
+        <article class="document-row">
+          <div class="doc-top">
+            <div>
+              <div class="doc-title">${escapeHtml(doc.headline || doc.event || doc.id)}</div>
+              <div class="meta">${escapeHtml(doc.location)} · ${formatDate(doc.effective_at || doc.issued_at)}</div>
+            </div>
+            <div class="badge-row">${sourceBadge(doc.source_type)}</div>
+          </div>
+          <div class="narrative">${escapeHtml((doc.narrative_text || "").slice(0, 360))}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderResults(matches, message = "") {
+      if (!matches.length) {
+        results.innerHTML = `<div class="empty">${escapeHtml(message || "No matches.")}</div>`;
+        return;
+      }
+      results.innerHTML = matches.map((match) => {
+        const score = match.similarity === null || match.similarity === undefined
+          ? "-"
+          : `${Math.round(Number(match.similarity) * 1000) / 10}%`;
+        return `
+          <article class="result-card">
+            <div class="result-top">
+              <div>
+                <div class="result-title">${escapeHtml(match.headline || match.event || match.id)}</div>
+                <div class="meta">${escapeHtml(match.location)} · ${formatDate(match.effective_at || match.issued_at)}</div>
+              </div>
+              <div class="badge-row">
+                ${sourceBadge(match.source_type)}
+                <span class="badge score">${score}</span>
+              </div>
+            </div>
+            <div class="chunk">${escapeHtml(match.chunk_text || match.narrative_text || "")}</div>
+            <div class="meta">Chunk ${match.chunk_index ?? 0} · ${escapeHtml(match.model_name || "")}</div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    syncForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearNotice(syncNotice);
+      const button = syncForm.querySelector("button[type='submit']");
+      button.disabled = true;
+      button.textContent = "Syncing";
+
+      const locations = document.getElementById("locations-input").value
+        .split(/\n|;/)
+        .map((value) => value.trim())
+        .filter(Boolean);
+      const payload = {
+        locations,
+        limit: Number(document.getElementById("sync-limit").value || 50),
+        include_hourly: document.getElementById("include-hourly").checked,
+      };
+
+      try {
+        const data = await api("/weather/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const errorText = data.errors && data.errors.length
+          ? ` ${data.errors.length} location error(s).`
+          : "";
+        setNotice(syncNotice, `Synced ${data.synced} document(s).${errorText}`);
+        await Promise.all([loadStatus(), loadDocuments()]);
+      } catch (err) {
+        setNotice(syncNotice, err.message, "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Sync Weather";
+      }
+    });
+
+    searchForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      results.innerHTML = `<div class="empty">Searching.</div>`;
+      const button = searchForm.querySelector("button[type='submit']");
+      button.disabled = true;
+      button.textContent = "Searching";
+
+      const payload = {
+        query: document.getElementById("query-input").value,
+        top_k: Number(document.getElementById("top-k-input").value || 5),
+        source_type: document.getElementById("source-filter").value,
+      };
+
+      try {
+        const data = await api("/weather/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        renderResults(data.matches || [], data.message);
+      } catch (err) {
+        results.innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+      } finally {
+        button.disabled = false;
+        button.textContent = "Search";
+      }
+    });
+
+    refreshButton.addEventListener("click", () => {
+      clearNotice(syncNotice);
+      Promise.all([loadStatus(), loadDocuments()]);
+    });
+
+    schemaButton.addEventListener("click", async () => {
+      clearNotice(syncNotice);
+      schemaButton.disabled = true;
+      schemaButton.textContent = "Initializing";
+      try {
+        await api("/weather/schema", { method: "POST" });
+        setNotice(syncNotice, "Schema ready.");
+        await Promise.all([loadStatus(), loadDocuments()]);
+      } catch (err) {
+        setNotice(syncNotice, err.message, "error");
+      } finally {
+        schemaButton.disabled = false;
+        schemaButton.textContent = "Init Schema";
+      }
+    });
+
+    documentSourceFilter.addEventListener("change", loadDocuments);
+
+    Promise.all([loadStatus(), loadDocuments()]);
+  </script>
+</body>
+</html>
