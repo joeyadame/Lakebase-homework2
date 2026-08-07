@@ -6,14 +6,13 @@ semantic search over weather alerts and forecasts.
 
 It follows the same shape as the Day 1 and Day 2 references:
 
-- `app.py` is the Flask app with `/weather/sync`, `/weather/search`, and the UI.
+- `app.py` is the Flask app with `/weather/sync`, `/weather/embed`,
+  `/weather/search`, and the UI.
 - `lakebase.py` owns the single `LAKEBASE_URL` psycopg2 connection helper.
 - `weather_client.py` mirrors the reference `massive_client.py`, but for NWS.
-- `notebooks/ingest_weather_embeddings.py` mirrors the Day 2 embedding notebook,
-  with plain psycopg2 writes instead of Spark JDBC.
+- `/weather/embed` computes chunk embeddings from the deployed app environment,
+  which uses the same Lakebase network path that already works for sync.
 - `sql/01_setup_weather_tables.sql` contains the explicit empty-database DDL.
-- `databricks.yml` and `resources/ingest_weather_embeddings_job.yml` define an
-  optional scheduled Databricks Workflow for embeddings.
 
 ## Data Source
 
@@ -108,14 +107,16 @@ Open `http://localhost:8000`.
      -d '{"locations":["Chicago, IL","Austin, TX"],"limit":50}'
    ```
 
-2. Embed unembedded rows:
+2. Embed new, unembedded rows from the deployed app:
 
    ```bash
-   python notebooks/ingest_weather_embeddings.py
+   curl -X POST http://localhost:8000/weather/embed \
+     -H "Content-Type: application/json" \
+     -d '{"limit":25}'
    ```
 
-   In Databricks, run the same file as a notebook from the Git folder or create
-   the Workflow from `resources/ingest_weather_embeddings_job.yml`.
+   This only selects documents with no existing rows in `weather_embeddings`.
+   Re-running it is safe; already embedded documents are skipped.
 
 3. Search:
 
@@ -139,21 +140,8 @@ Open `http://localhost:8000`.
 4. Create a Databricks App from the Git folder root.
 5. Deploy. `app.yaml` runs `python app.py` and reads `database/lakebase-url`.
 6. Open the app, click `Init Schema`, then `Sync Weather`.
-7. Run `notebooks/ingest_weather_embeddings.py`.
+7. Click `Embed New`.
 8. Search from the UI or call `/weather/search`.
-
-## Scheduled Embeddings
-
-The bundle resource is paused by default.
-
-```bash
-databricks bundle deploy -t dev
-databricks bundle run ingest_weather_embeddings_job -t dev
-```
-
-After a successful manual run, change `pause_status: PAUSED` to
-`pause_status: UNPAUSED` in `resources/ingest_weather_embeddings_job.yml` and
-redeploy. The included schedule runs every 30 minutes UTC.
 
 ## API
 
@@ -162,6 +150,7 @@ redeploy. The included schedule runs every 30 minutes UTC.
 - `GET /weather/status`
 - `GET /weather/documents?limit=20&source_type=alert`
 - `POST /weather/sync`
+- `POST /weather/embed`
 - `POST /weather/search`
 - `GET /weather/search?query=...&top_k=5&source_type=forecast`
 
@@ -171,15 +160,15 @@ redeploy. The included schedule runs every 30 minutes UTC.
 - GET search variant.
 - Retrieval filter by `source_type`.
 - HNSW pgvector cosine index.
-- Scheduled Databricks Workflow resource.
-- Frontend for sync, status, recent documents, and vector search.
+- App-side embedding for only-new documents.
+- Frontend for sync, embedding, status, recent documents, and vector search.
 
 ## Known Limitations
 
 - NWS covers the United States and territories.
 - City/state geocoding is convenience plumbing; `lat,lon` is the most reliable
   input for exact locations.
-- First query in a fresh app process may take time while the embedding model
+- First embed/search in a fresh app process may take time while the embedding model
   loads into memory.
 - The app returns retrieved documents, not an LLM-generated RAG summary. That
   would require adding a model-serving or OpenAI API credential.

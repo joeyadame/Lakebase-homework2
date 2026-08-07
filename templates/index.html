@@ -180,7 +180,7 @@
 
     .status-grid {
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       gap: 10px;
     }
 
@@ -510,6 +510,7 @@
       <section class="status-grid" aria-label="Pipeline status">
         <div class="metric"><span>Documents</span><strong id="metric-documents">0</strong></div>
         <div class="metric"><span>Vectors</span><strong id="metric-vectors">0</strong></div>
+        <div class="metric"><span>New Docs</span><strong id="metric-unembedded">0</strong></div>
         <div class="metric"><span>Alerts</span><strong id="metric-alerts">0</strong></div>
         <div class="metric"><span>Forecasts</span><strong id="metric-forecasts">0</strong></div>
       </section>
@@ -538,6 +539,7 @@
               </div>
               <div class="actions">
                 <button class="primary" type="submit">Sync Weather</button>
+                <button class="secondary" id="embed-button" type="button">Embed New</button>
                 <button class="secondary" id="schema-button" type="button">Init Schema</button>
               </div>
             </form>
@@ -599,6 +601,7 @@
     const documentSourceFilter = document.getElementById("document-source-filter");
     const refreshButton = document.getElementById("refresh-button");
     const schemaButton = document.getElementById("schema-button");
+    const embedButton = document.getElementById("embed-button");
 
     function escapeHtml(value) {
       return String(value ?? "")
@@ -648,6 +651,7 @@
         const bySource = status.by_source || {};
         document.getElementById("metric-documents").textContent = status.documents ?? 0;
         document.getElementById("metric-vectors").textContent = status.embeddings ?? 0;
+        document.getElementById("metric-unembedded").textContent = status.unembedded_documents ?? 0;
         document.getElementById("metric-alerts").textContent = bySource.alert ?? 0;
         document.getElementById("metric-forecasts").textContent = bySource.forecast ?? 0;
       } catch (err) {
@@ -780,6 +784,34 @@
     refreshButton.addEventListener("click", () => {
       clearNotice(syncNotice);
       Promise.all([loadStatus(), loadDocuments()]);
+    });
+
+    embedButton.addEventListener("click", async () => {
+      clearNotice(syncNotice);
+      embedButton.disabled = true;
+      embedButton.textContent = "Embedding";
+      const payload = {
+        limit: Math.min(Number(document.getElementById("sync-limit").value || 25), 100),
+        source_type: documentSourceFilter.value,
+      };
+
+      try {
+        const data = await api("/weather/embed", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        setNotice(
+          syncNotice,
+          `${data.message} Inserted ${data.embeddings_inserted} vector row(s) from ${data.documents_selected} document(s).`
+        );
+        await Promise.all([loadStatus(), loadDocuments()]);
+      } catch (err) {
+        setNotice(syncNotice, err.message, "error");
+      } finally {
+        embedButton.disabled = false;
+        embedButton.textContent = "Embed New";
+      }
     });
 
     schemaButton.addEventListener("click", async () => {

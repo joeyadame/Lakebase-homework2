@@ -5,11 +5,13 @@ This app follows the Day 1/Day 2 Lakebase reference pattern:
 - Flask serves a small UI and REST API.
 - lakebase.py owns the psycopg2 connection to Lakebase.
 - weather_client.py harvests public NWS weather text.
-- a separate notebook/script computes pgvector embeddings.
+- the app embeds new weather documents directly from the environment that
+  already has Lakebase access.
 """
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 from collections import Counter
@@ -45,8 +47,13 @@ EMBEDDING_MODEL_NAME = os.environ.get(
 EMBEDDING_DIM = int(os.environ.get("WEATHER_EMBEDDING_DIM", "384"))
 CHUNK_SIZE = int(os.environ.get("WEATHER_CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.environ.get("WEATHER_CHUNK_OVERLAP", "100"))
+EMBED_BATCH_SIZE = int(os.environ.get("WEATHER_EMBED_BATCH_SIZE", "32"))
 MAX_SYNC_LIMIT = 200
+MAX_EMBED_LIMIT = 100
 MAX_TOP_K = 20
+
+if CHUNK_OVERLAP >= CHUNK_SIZE:
+    raise ValueError("WEATHER_CHUNK_OVERLAP must be smaller than WEATHER_CHUNK_SIZE")
 
 DEFAULT_LOCATIONS = [
     value.strip()
@@ -111,6 +118,16 @@ def weather_status():
             (SELECT COUNT(*)::int FROM {WEATHER_DOCUMENTS_TABLE}) AS documents,
             (SELECT COUNT(*)::int FROM {WEATHER_EMBEDDINGS_TABLE}) AS embeddings,
             (
+                SELECT COUNT(*)::int
+                FROM {WEATHER_DOCUMENTS_TABLE} d
+                WHERE length(trim(COALESCE(d.narrative_text, ''))) > 0
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM {WEATHER_EMBEDDINGS_TABLE} e
+                      WHERE e.document_id = d.id
+                  )
+            ) AS unembedded_documents,
+            (
                 SELECT COALESCE(jsonb_object_agg(source_type, total), '{{}}'::jsonb)
                 FROM (
                     SELECT source_type, COUNT(*)::int AS total
@@ -129,6 +146,7 @@ def weather_status():
             "embedding_dim": EMBEDDING_DIM,
             "chunk_size": CHUNK_SIZE,
             "chunk_overlap": CHUNK_OVERLAP,
+            "embed_batch_size": EMBED_BATCH_SIZE,
         }
     )
     return jsonify({"status": row})
@@ -205,10 +223,39 @@ def sync_weather():
                 "requested_locations": locations,
                 "source_counts": dict(source_counts),
                 "errors": errors,
-                "next_step": "Run notebooks/ingest_weather_embeddings.py, then POST /weather/search.",
+                "next_step": "POST /weather/embed to embed new documents, then POST /weather/search.",
             }
         ),
         status_code,
+    )
+
+
+@app.route("/weather/embed", methods=["POST"])
+def embed_weather():
+    """Embed newly synced weather documents that have no embeddings yet."""
+    ensure_weather_schema()
+    body = _payload()
+    limit = _clamp_int(body.get("limit"), default=25, lower=1, upper=MAX_EMBED_LIMIT)
+    try:
+        source_type = _source_type_filter(body.get("source_type"))
+    except ValueError as exc:
+        return _error(str(exc))
+
+    result = _embed_unembedded_weather_documents(limit=limit, source_type=source_type)
+    return jsonify(
+        {
+            "documents_selected": result["documents_selected"],
+            "chunks_prepared": result["chunks_prepared"],
+            "embeddings_inserted": result["embeddings_inserted"],
+            "model_name": EMBEDDING_MODEL_NAME,
+            "embedding_dim": EMBEDDING_DIM,
+            "source_type": source_type or "all",
+            "message": (
+                "No new weather documents need embeddings."
+                if result["documents_selected"] == 0
+                else "Embedded newly synced weather documents."
+            ),
+        }
     )
 
 
@@ -234,7 +281,7 @@ def search_weather():
             {
                 "query": query,
                 "matches": [],
-                "message": "No weather embeddings found. Run /weather/sync, then notebooks/ingest_weather_embeddings.py.",
+                "message": "No weather embeddings found. Run /weather/sync, then POST /weather/embed.",
             }
         )
 
@@ -399,6 +446,150 @@ def _embed_query(query: str) -> str:
             f"Embedding model returned {len(vector)} dimensions, expected {EMBEDDING_DIM}"
         )
     return _vector_literal(vector)
+
+
+def _chunk_text(text: str) -> list[str]:
+    text = (text or "").strip()
+    if not text:
+        return []
+    if len(text) <= CHUNK_SIZE:
+        return [text]
+
+    chunks: list[str] = []
+    step = CHUNK_SIZE - CHUNK_OVERLAP
+    for start in range(0, len(text), step):
+        chunk = text[start : start + CHUNK_SIZE].strip()
+        if chunk:
+            chunks.append(chunk)
+        if start + CHUNK_SIZE >= len(text):
+            break
+    return chunks
+
+
+def _embedding_id(document_id: str, chunk_index: int) -> str:
+    digest = hashlib.sha256(f"{document_id}:{chunk_index}".encode("utf-8")).hexdigest()
+    return f"weather-emb:{digest[:32]}"
+
+
+def _load_unembedded_weather_documents(
+    *,
+    limit: int,
+    source_type: str | None,
+) -> list[dict[str, Any]]:
+    where_clauses = [
+        "length(trim(COALESCE(d.narrative_text, ''))) > 0",
+        f"""
+        NOT EXISTS (
+            SELECT 1
+            FROM {WEATHER_EMBEDDINGS_TABLE} e
+            WHERE e.document_id = d.id
+        )
+        """,
+    ]
+    params: list[Any] = []
+    if source_type:
+        where_clauses.append("d.source_type = %s")
+        params.append(source_type)
+    params.append(limit)
+
+    return lakebase.run_query(
+        f"""
+        SELECT
+            d.id,
+            d.location,
+            d.source_type,
+            d.headline,
+            d.narrative_text,
+            d.synced_at
+        FROM {WEATHER_DOCUMENTS_TABLE} d
+        WHERE {" AND ".join(where_clauses)}
+        ORDER BY d.synced_at ASC
+        LIMIT %s
+        """,
+        tuple(params),
+    )
+
+
+def _embed_unembedded_weather_documents(
+    *,
+    limit: int,
+    source_type: str | None,
+) -> dict[str, int]:
+    documents = _load_unembedded_weather_documents(limit=limit, source_type=source_type)
+    chunks: list[dict[str, Any]] = []
+    for document in documents:
+        for chunk_index, chunk_text in enumerate(_chunk_text(document["narrative_text"])):
+            chunks.append(
+                {
+                    "id": _embedding_id(document["id"], chunk_index),
+                    "document_id": document["id"],
+                    "chunk_index": chunk_index,
+                    "chunk_text": chunk_text,
+                }
+            )
+
+    if not chunks:
+        return {
+            "documents_selected": len(documents),
+            "chunks_prepared": 0,
+            "embeddings_inserted": 0,
+        }
+
+    model = _embedding_model_singleton()
+    vectors = model.encode(
+        [chunk["chunk_text"] for chunk in chunks],
+        batch_size=EMBED_BATCH_SIZE,
+        show_progress_bar=False,
+    )
+
+    rows = []
+    for chunk, vector in zip(chunks, vectors):
+        values = vector.tolist()
+        if len(values) != EMBEDDING_DIM:
+            raise ValueError(
+                f"Embedding model returned {len(values)} dimensions, expected {EMBEDDING_DIM}"
+            )
+        rows.append(
+            (
+                chunk["id"],
+                chunk["document_id"],
+                chunk["chunk_index"],
+                chunk["chunk_text"],
+                _vector_literal(values),
+                EMBEDDING_MODEL_NAME,
+            )
+        )
+
+    with lakebase.get_connection() as conn:
+        with conn.cursor() as cur:
+            inserted = execute_values(
+                cur,
+                f"""
+                INSERT INTO {WEATHER_EMBEDDINGS_TABLE} (
+                    id,
+                    document_id,
+                    chunk_index,
+                    chunk_text,
+                    embedding,
+                    model_name,
+                    created_at
+                )
+                VALUES %s
+                ON CONFLICT (document_id, chunk_index) DO NOTHING
+                RETURNING id
+                """,
+                rows,
+                template="(%s, %s, %s, %s, %s::vector, %s, now())",
+                page_size=100,
+                fetch=True,
+            )
+            conn.commit()
+
+    return {
+        "documents_selected": len(documents),
+        "chunks_prepared": len(chunks),
+        "embeddings_inserted": len(inserted),
+    }
 
 
 def _upsert_weather_documents(documents: list[dict[str, Any]]) -> int:

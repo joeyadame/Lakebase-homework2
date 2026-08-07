@@ -13,6 +13,8 @@ env:
     value: "weather_embeddings"
   - name: WEATHER_EMBEDDING_MODEL
     value: "sentence-transformers/all-MiniLM-L6-v2"
+  - name: WEATHER_EMBED_BATCH_SIZE
+    value: "32"
   - name: WEATHER_DEFAULT_LOCATIONS
     value: "Chicago, IL;Austin, TX"
   - name: NWS_USER_AGENT
