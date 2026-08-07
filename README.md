@@ -4,12 +4,12 @@ Weather Intelligence is a Databricks App that harvests public National Weather
 Service text, stores it in Lakebase, embeds it with pgvector, and exposes
 semantic search over weather alerts and forecasts.
 
-It follows the same shape as the Day 1 and Day 2 references:
+Project structure:
 
 - `app.py` is the Flask app with `/weather/sync`, `/weather/embed`,
   `/weather/search`, and the UI.
 - `lakebase.py` owns the single `LAKEBASE_URL` psycopg2 connection helper.
-- `weather_client.py` mirrors the reference `massive_client.py`, but for NWS.
+- `weather_client.py` harvests and normalizes NWS alerts and forecasts.
 - `/weather/embed` computes chunk embeddings from the deployed app environment,
   which uses the same Lakebase network path that already works for sync.
 - `sql/01_setup_weather_tables.sql` contains the explicit empty-database DDL.
@@ -82,7 +82,7 @@ Start with an empty Lakebase database.
 - HNSW cosine index: `USING hnsw (embedding vector_cosine_ops)`
 
 The embedding model is `sentence-transformers/all-MiniLM-L6-v2` because it is
-the Day 2 convention and emits 384-dimensional vectors. Chunking uses
+the assignment-specified model and emits 384-dimensional vectors. Chunking uses
 `CHUNK_SIZE=800` and `CHUNK_OVERLAP=100`; most NWS records are short, but alerts
 with instructions can still benefit from stable chunking.
 
